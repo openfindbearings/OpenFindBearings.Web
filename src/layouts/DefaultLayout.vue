@@ -1,5 +1,9 @@
 <template>
-  <a-layout class="default-layout">
+  <!-- 全屏着陆页：不使用布局容器 -->
+  <router-view v-if="isLandingPage" />
+
+  <!-- 普通页面：使用默认布局 -->
+  <a-layout v-else class="default-layout">
     <AppHeader />
     <a-layout-content class="main-content">
       <router-view />
@@ -9,8 +13,13 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
 import AppHeader from '../components/AppHeader.vue'
 import AppFooter from '../components/AppFooter.vue'
+
+const route = useRoute()
+const isLandingPage = computed(() => route.name === 'Landing')
 </script>
 
 <style scoped>

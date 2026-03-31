@@ -1,7 +1,7 @@
 <template>
   <a-layout-header class="header">
     <div class="header-content">
-      <router-link to="/" class="logo">
+      <router-link to="/home" class="logo">
         <span class="logo-icon">B</span>
         <span class="logo-text">轴承商城</span>
       </router-link>

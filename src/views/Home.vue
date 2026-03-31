@@ -9,9 +9,13 @@
           v-model:value="searchKeyword"
           placeholder="输入轴承型号、品牌或类型..."
           size="large"
-          enter-button="搜索"
+          enter-button
           @search="handleSearch"
-        />
+        >
+          <template #enterButton>
+            <SearchOutlined /> 搜索
+          </template>
+        </a-input-search>
       </div>
       
       <div class="hot-searches">
@@ -75,6 +79,7 @@
 </template>
 
 <script setup lang="ts">
+import { SearchOutlined } from '@ant-design/icons-vue'
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
@@ -143,9 +148,6 @@ onMounted(async () => {
 .search-box :deep(.ant-input-search-button) {
   background: #fff;
   border-color: #fff;
-}
-
-.search-box :deep(.ant-input-search-button .ant-btn) {
   color: #1890ff;
   font-weight: 500;
 }
