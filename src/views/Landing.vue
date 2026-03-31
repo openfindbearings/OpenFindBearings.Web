@@ -26,18 +26,19 @@
       }"
     ></div>
 
-    <!-- 首字下沉 -->
+    <!-- 首字下沉（支持多个） -->
     <div
+      v-for="(dc, index) in dropCaps"
+      :key="`dropcap-${index}`"
       class="drop-cap"
-      ref="dropCapRef"
       :style="{
-        left: `${dropCapPosition.x}px`,
-        top: `${dropCapPosition.y}px`,
-        fontSize: `${dropCapSize}px`,
-        lineHeight: `${dropCapSize}px`,
+        left: `${dc.x}px`,
+        top: `${dc.y}px`,
+        fontSize: `${dc.size}px`,
+        lineHeight: `${dc.size}px`,
       }"
     >
-      {{ dropCapText }}
+      {{ dc.text }}
     </div>
 
     <!-- 环绕文字容器 -->
@@ -75,13 +76,45 @@ import { walkLineRanges } from '@chenglou/pretext'
 const router = useRouter()
 const containerRef = ref<HTMLElement>()
 const obstacleRef = ref<HTMLElement>()
-const dropCapRef = ref<HTMLElement>()
 
 // 获取配置
 const config = getLandingConfig()
 
-// 将多行文字合并为一段（用于布局）
-const introText = computed(() => config.flowingText.join(''))
+// 段落接口（带段首标记的段落）
+interface Paragraph {
+  text: string
+  hasDropCap: boolean
+}
+
+// 解析段落：以 | 开头的段落需要段首效果
+const paragraphs = computed<Paragraph[]>(() =>
+  config.flowingText.map(text => ({
+    text: text.startsWith('|') ? text.slice(1) : text,
+    hasDropCap: text.startsWith('|'),
+  }))
+)
+
+// 将所有段落（不含首字）合并为连续文本，用于流动布局
+const introText = computed(() => {
+  return paragraphs.value
+    .map(p => {
+      if (p.hasDropCap && p.text.length > 1) {
+        return p.text.slice(1)  // 去掉首字
+      }
+      return p.text
+    })
+    .join('')  // 不加空格，直接连接
+})
+
+// 首字下沉数组
+interface DropCap {
+  text: string
+  x: number
+  y: number
+  size: number
+  paragraphIndex: number  // 对应第几个段落
+}
+const dropCaps = ref<DropCap[]>([])
 
 const layoutLines = ref<Array<{ x: number; y: number; text: string; width: number }>>([])
 const obstaclePosition = ref({ x: 0.5, y: 0.45 })
@@ -89,16 +122,14 @@ const obstaclePosition = ref({ x: 0.5, y: 0.45 })
 // 次要 orbs 的视觉位置
 const secondaryOrbs = ref<Array<{ x: number; y: number; r: number; background: string; boxShadow: string }>>([])
 
-// 首字下沉
-const dropCapText = computed(() => introText.value[0] || '')
-const dropCapPosition = ref({ x: 0, y: 0 })
 const DROP_CAP_LINES = 3
 
 let animationFrameId: number | null = null
-let preparedText: any = null  // 缓存预处理结果
-let preparedDropCap: any = null
-let dropCapWidth = 0
-let dropCapSize = 0
+let preparedText: any = null  // 合并文本的预处理结果
+let preparedDropCaps: any[] = []  // 多个首字的预处理结果
+let dropCapWidths: number[] = []  // 每个首字的宽度
+let dropCapSizes: number[] = []  // 每个首字的大小
+let paraStartIndices: number[] = []  // 每个段落在合并文本中的起始索引
 
 // Orb 定义 - 多个圆形障碍物
 interface Orb {
@@ -117,24 +148,50 @@ const orbs = ref<Orb[]>([
 ])
 let lastTime = 0
 
-// 初始化首字下沉
-const initDropCap = (containerWidth: number) => {
+// 初始化首字下沉和预处理文本
+const initDropCaps = (containerWidth: number) => {
   const fontSize = Math.max(11, Math.min(13, containerWidth / 100))
   const lineHeight = fontSize * 1.6
-  dropCapSize = lineHeight * DROP_CAP_LINES - 4
-  const dropCapFont = `700 ${dropCapSize}px system-ui, -apple-system, sans-serif`
+  const bodyFont = `${fontSize}px system-ui, -apple-system, sans-serif`
 
-  preparedDropCap = prepareTextForLayout(dropCapText.value, dropCapFont)
+  preparedDropCaps = []
+  dropCapWidths = []
+  dropCapSizes = []
+  paraStartIndices = []
 
-  // 计算首字宽度（同步）
-  walkLineRanges(preparedDropCap, 9999, (line: any) => {
-    dropCapWidth = line.width
+  // 预处理合并后的文本
+  preparedText = prepareTextForLayout(introText.value, bodyFont)
+
+  // 计算每个段落的起始索引
+  let currentIndex = 0
+  paragraphs.value.forEach((para) => {
+    paraStartIndices.push(currentIndex)
+    const paraText = para.hasDropCap && para.text.length > 1 ? para.text.slice(1) : para.text
+    currentIndex += paraText.length
+
+    // 如果需要段首效果，预处理首字
+    if (para.hasDropCap && para.text[0]) {
+      const size = lineHeight * DROP_CAP_LINES - 4
+      const dropCapFont = `700 ${size}px system-ui, -apple-system, sans-serif`
+      const char = para.text[0]
+
+      const prepared = prepareTextForLayout(char, dropCapFont)
+      let width = 0
+
+      walkLineRanges(prepared, 9999, (line: any) => {
+        width = line.width
+      })
+
+      preparedDropCaps.push(prepared)
+      dropCapWidths.push(width)
+      dropCapSizes.push(size)
+    }
   })
 }
 
 // 计算多列布局和圆形障碍物
 const performLayout = (timestamp: number = 0) => {
-  if (!containerRef.value || !preparedText) return
+  if (!containerRef.value) return
 
   const container = containerRef.value
   const containerRect = container.getBoundingClientRect()
@@ -144,17 +201,20 @@ const performLayout = (timestamp: number = 0) => {
   // 布局常量
   const GUTTER = 48
   const COL_GAP = 40
-  const BOTTOM_GAP = 100
+  const BOTTOM_GAP = 80  // 减少底部间距
   const padding = Math.max(15, containerRect.width * 0.02)
 
   const pageWidth = containerRect.width
   const pageHeight = containerRect.height
   const isNarrow = pageWidth < 760
 
-  // 初始化首字下沉
-  if (dropCapSize === 0) {
-    initDropCap(pageWidth)
+  // 初始化首字下沉和文本预处理（第一次运行时或段落数量变化时）
+  if (!preparedText || paraStartIndices.length !== paragraphs.value.length) {
+    initDropCaps(pageWidth)
   }
+
+  // 如果初始化后还是没有数据，返回
+  if (!preparedText) return
 
   // 更新 orb 位置（物理模拟）
   const minSize = Math.min(pageWidth, pageHeight)
@@ -252,33 +312,59 @@ const performLayout = (timestamp: number = 0) => {
   const columnWidth = Math.floor((maxContentWidth - totalGutter) / columnCount)
   const contentLeft = Math.round((pageWidth - (columnCount * columnWidth + (columnCount - 1) * COL_GAP)) / 2)
 
-  // 首字下沉障碍物
-  const dropCapTotalW = Math.ceil(dropCapWidth) + 10
-  const dropCapRect: RectObstacle = {
-    x: contentLeft - 2,
-    y: GUTTER + 20 - 2,
-    width: dropCapTotalW,
-    height: DROP_CAP_LINES * lineHeight + 2,
-  }
-
-  // 更新首字下沉位置
-  dropCapPosition.value = { x: contentLeft, y: GUTTER + 20 }
-
-  // 执行多列布局
+  // 多列布局 - 连续流动
   const allBodyLines: PositionedLine[] = []
-  let cursor: LayoutCursor = { segmentIndex: 0, graphemeIndex: 0 }  // 从头开始，首字下沉会覆盖第一个字符
+  const newDropCaps: DropCap[] = []
+
+  // 逐列布局，文本在列间流动
+  let cursor: LayoutCursor = { segmentIndex: 0, graphemeIndex: 0 }
+  const processedDropCaps = new Set<number>()  // 记录已处理的段首
 
   for (let colIndex = 0; colIndex < columnCount; colIndex++) {
     const columnX = contentLeft + colIndex * (columnWidth + COL_GAP)
     const rects: RectObstacle[] = []
 
-    // 只在第一列添加首字下沉障碍物
-    if (colIndex === 0) {
-      rects.push(dropCapRect)
+    // 检查是否文本已全部布局完
+    const textExhausted = cursor.segmentIndex === 0 && cursor.graphemeIndex === 0 && colIndex > 0
+    if (textExhausted) break
+
+    // 检查当前 cursor 位置是否对应某个需要段首效果的段落
+    for (let i = 0; i < paragraphs.value.length; i++) {
+      const para = paragraphs.value[i]!
+      if (!para.hasDropCap || processedDropCaps.has(i)) continue
+
+      const paraStart = paraStartIndices[i] || 0
+      const dropCapArrayIndex = newDropCaps.length  // 当前段首在数组中的索引
+
+      // 如果当前 cursor 在或刚超过这个段落的起始位置，添加段首
+      if (cursor.graphemeIndex <= paraStart + 10) {  // 在段落起始附近
+        const dcWidth = dropCapWidths[dropCapArrayIndex]!
+        const dcSize = dropCapSizes[dropCapArrayIndex]!
+        const dropCapTotalW = Math.ceil(dcWidth) + 10
+
+        rects.push({
+          x: columnX - 2,
+          y: GUTTER + 20 - 2,
+          width: dropCapTotalW,
+          height: DROP_CAP_LINES * lineHeight + 2,
+        })
+
+        newDropCaps.push({
+          text: para.text[0] || '',
+          x: columnX,
+          y: GUTTER + 20,
+          size: dcSize,
+          paragraphIndex: i,
+        })
+
+        processedDropCaps.add(i)
+        break  // 只处理一个段首
+      }
     }
 
+    // 布局当前列
     const result = layoutColumn(
-      preparedText || introText.value,
+      preparedText,
       cursor,
       columnX,
       GUTTER + 20,
@@ -293,8 +379,16 @@ const performLayout = (timestamp: number = 0) => {
 
     allBodyLines.push(...result.lines)
     cursor = result.cursor
+
+    // 检查是否还有剩余内容
+    const hasMore = cursor.segmentIndex > 0 || cursor.graphemeIndex > 0
+    if (!hasMore) break
   }
 
+  dropCaps.value = newDropCaps
+  layoutLines.value = allBodyLines
+
+  dropCaps.value = newDropCaps
   layoutLines.value = allBodyLines
 }
 
@@ -332,18 +426,7 @@ onMounted(async () => {
   // 等待字体加载完成
   await document.fonts.ready
 
-  // 预处理文本（只执行一次）
-  const fontSize = 13
-  const font = `${fontSize}px system-ui, -apple-system, sans-serif`
-
-  try {
-    preparedText = prepareTextForLayout(introText.value, font)
-    console.log('[preparedText]', preparedText ? 'OK' : 'FAILED')
-  } catch (e) {
-    console.error('[prepareTextForLayout error]', e)
-  }
-
-  // 初始化后立即启动动画
+  // 初始化后立即启动动画（initDropCaps 会在 performLayout 中首次调用）
   lastTime = performance.now()
   startFloatingAnimation()
 })
