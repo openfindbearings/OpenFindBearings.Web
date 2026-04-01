@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>动画测试</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      width: 100vw;
+      height: 100vh;
+      background: #1a1a2e;
+      overflow: hidden;
+    }
+    .orb {
+      position: absolute;
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+    }
+    .orb-1 {
+      width: 200px;
+      height: 200px;
+      background: radial-gradient(circle at 35% 35%, rgba(24, 144, 255, 0.35), rgba(24, 144, 255, 0.12) 55%, transparent 72%);
+      box-shadow: 0 0 60px 15px rgba(24, 144, 255, 0.18);
+    }
+    .orb-2 {
+      width: 120px;
+      height: 120px;
+      background: radial-gradient(circle at 35% 35%, rgba(64, 169, 255, 0.35), rgba(64, 169, 255, 0.12) 55%, transparent 72%);
+    }
+    .orb-3 {
+      width: 100px;
+      height: 100px;
+      background: radial-gradient(circle at 35% 35%, rgba(105, 192, 255, 0.35), rgba(105, 192, 255, 0.12) 55%, transparent 72%);
+    }
+    #info {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      color: white;
+      font-family: monospace;
+      font-size: 14px;
+      z-index: 1000;
+    }
+  </style>
+</head>
+<body>
+  <div id="info">帧数: <span id="frameCount">0</span></div>
+  <div class="orb orb-1" id="orb1"></div>
+  <div class="orb orb-2" id="orb2"></div>
+  <div class="orb orb-3" id="orb3"></div>
+
+  <script>
+    // 简单的 orb 状态
+    const orbs = [
+      { x: 0.5, y: 0.45, vx: 0.015, vy: 0.01, el: document.getElementById('orb1') },
+      { x: 0.2, y: 0.6, vx: -0.012, vy: 0.016, el: document.getElementById('orb2') },
+      { x: 0.8, y: 0.3, vx: 0.01, vy: -0.013, el: document.getElementById('orb3') },
+    ]
+
+    let lastTime = 0
+    let frameCount = 0
+    const frameCountEl = document.getElementById('frameCount')
+
+    function animate(timestamp) {
+      const dt = lastTime ? Math.min((timestamp - lastTime) / 1000, 0.05) : 0.016
+      lastTime = timestamp
+
+      const pageWidth = window.innerWidth
+      const pageHeight = window.innerHeight
+
+      // 更新每个 orb
+      orbs.forEach((orb, i) => {
+        // 更新位置
+        orb.x += orb.vx * dt * 60
+        orb.y += orb.vy * dt * 60
+
+        // 边界碰撞
+        if (orb.x < 0.1 || orb.x > 0.9) orb.vx *= -1
+        if (orb.y < 0.1 || orb.y > 0.8) orb.vy *= -1
+
+        // 应用位置
+        orb.el.style.left = (orb.x * 100) + '%'
+        orb.el.style.top = (orb.y * 100) + '%'
+      })
+
+      // Orb 之间的碰撞
+      for (let i = 0; i < orbs.length; i++) {
+        for (let j = i + 1; j < orbs.length; j++) {
+          const dx = (orbs[j].x - orbs[i].x) * pageWidth
+          const dy = (orbs[j].y - orbs[i].y) * pageHeight
+          const dist = Math.sqrt(dx * dx + dy * dy)
+          const minDist = 150 + 20
+
+          if (dist < minDist) {
+            const force = (minDist - dist) * 0.5
+            const nx = dx / dist
+            const ny = dy / dist
+
+            orbs[i].vx -= nx * force * dt
+            orbs[i].vy -= ny * force * dt
+            orbs[j].vx += nx * force * dt
+            orbs[j].vy += ny * force * dt
+          }
+        }
+      }
+
+      frameCount++
+      frameCountEl.textContent = frameCount
+
+      requestAnimationFrame(animate)
+    }
+
+    requestAnimationFrame(animate)
+  </script>
+</body>
+</html>

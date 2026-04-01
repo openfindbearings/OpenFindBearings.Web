@@ -69,7 +69,7 @@
 import { ref, onMounted, onUnmounted, nextTick, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { RightOutlined } from '@ant-design/icons-vue'
-import { layoutTextWithObstacles, prepareTextForLayout, layoutColumn, type RectObstacle, type CircleObstacle, type LayoutCursor, type PositionedLine } from '../utils/text-layout'
+import { prepareTextForLayout, layoutColumn, type RectObstacle, type CircleObstacle, type PositionedLine } from '../utils/text-layout'
 import { getLandingConfig } from '../config/landing'
 import { walkLineRanges } from '@chenglou/pretext'
 
@@ -94,18 +94,6 @@ const paragraphs = computed<Paragraph[]>(() =>
   }))
 )
 
-// 将所有段落（不含首字）合并为连续文本，用于流动布局
-const introText = computed(() => {
-  return paragraphs.value
-    .map(p => {
-      if (p.hasDropCap && p.text.length > 1) {
-        return p.text.slice(1)  // 去掉首字
-      }
-      return p.text
-    })
-    .join('')  // 不加空格，直接连接
-})
-
 // 首字下沉数组
 interface DropCap {
   text: string
@@ -125,11 +113,11 @@ const secondaryOrbs = ref<Array<{ x: number; y: number; r: number; background: s
 const DROP_CAP_LINES = 3
 
 let animationFrameId: number | null = null
-let preparedText: any = null  // 合并文本的预处理结果
-let preparedDropCaps: any[] = []  // 多个首字的预处理结果
-let dropCapWidths: number[] = []  // 每个首字的宽度
-let dropCapSizes: number[] = []  // 每个首字的大小
-let paraStartIndices: number[] = []  // 每个段落在合并文本中的起始索引
+let preparedParagraphs: any[] = []
+let preparedDropCaps: any[] = []
+let dropCapWidths: number[] = []
+let dropCapSizes: number[] = []
+let paraStartIndices: number[] = []
 
 // Orb 定义 - 多个圆形障碍物
 interface Orb {
@@ -141,11 +129,13 @@ interface Orb {
   color: string
 }
 
-const orbs = ref<Orb[]>([
+// 使用普通数组存储物理状态，不使用 Vue 响应式
+const orbs: Orb[] = [
   { x: 0.5, y: 0.45, vx: 0.015, vy: 0.01, r: 0.15, color: '#1890ff' },
   { x: 0.2, y: 0.6, vx: -0.012, vy: 0.016, r: 0.1, color: '#40a9ff' },
   { x: 0.8, y: 0.3, vx: 0.01, vy: -0.013, r: 0.08, color: '#69c0ff' },
-])
+]
+
 let lastTime = 0
 
 // 初始化首字下沉和预处理文本
@@ -154,20 +144,21 @@ const initDropCaps = (containerWidth: number) => {
   const lineHeight = fontSize * 1.6
   const bodyFont = `${fontSize}px system-ui, -apple-system, sans-serif`
 
+  preparedParagraphs = []
   preparedDropCaps = []
   dropCapWidths = []
   dropCapSizes = []
   paraStartIndices = []
 
-  // 预处理合并后的文本
-  preparedText = prepareTextForLayout(introText.value, bodyFont)
-
-  // 计算每个段落的起始索引
+  // 预处理每个段落
   let currentIndex = 0
   paragraphs.value.forEach((para) => {
     paraStartIndices.push(currentIndex)
     const paraText = para.hasDropCap && para.text.length > 1 ? para.text.slice(1) : para.text
     currentIndex += paraText.length
+
+    // 预处理段落文本
+    preparedParagraphs.push(prepareTextForLayout(paraText, bodyFont))
 
     // 如果需要段首效果，预处理首字
     if (para.hasDropCap && para.text[0]) {
@@ -187,7 +178,7 @@ const initDropCaps = (containerWidth: number) => {
       dropCapSizes.push(size)
     }
   })
-}
+  }
 
 // 计算多列布局和圆形障碍物
 const performLayout = (timestamp: number = 0) => {
@@ -202,79 +193,76 @@ const performLayout = (timestamp: number = 0) => {
   const GUTTER = 48
   const COL_GAP = 40
   const BOTTOM_GAP = 80  // 减少底部间距
-  const padding = Math.max(15, containerRect.width * 0.02)
-
   const pageWidth = containerRect.width
   const pageHeight = containerRect.height
   const isNarrow = pageWidth < 760
 
   // 初始化首字下沉和文本预处理（第一次运行时或段落数量变化时）
-  if (!preparedText || paraStartIndices.length !== paragraphs.value.length) {
+  if (preparedParagraphs.length === 0 || preparedParagraphs.length !== paragraphs.value.length) {
     initDropCaps(pageWidth)
   }
 
   // 如果初始化后还是没有数据，返回
-  if (!preparedText) return
+  if (preparedParagraphs.length === 0) return
 
   // 更新 orb 位置（物理模拟）
   const minSize = Math.min(pageWidth, pageHeight)
 
   // 边界和碰撞
-  for (let i = 0; i < orbs.value.length; i++) {
-    const orb = orbs.value[i]!
-    const radius = orb.r * minSize
+  for (let i = 0; i < orbs.length; i++) {
+    const radius = orbs[i]!.r * minSize
 
     // 更新位置
-    orb.x += orb.vx * dt
-    orb.y += orb.vy * dt
+    orbs[i]!.x = orbs[i]!.x + orbs[i]!.vx * dt
+    orbs[i]!.y = orbs[i]!.y + orbs[i]!.vy * dt
 
     // 边界碰撞
-    if (orb.x * pageWidth - radius < 0) {
-      orb.x = radius / pageWidth
-      orb.vx = Math.abs(orb.vx)
+    if (orbs[i]!.x * pageWidth - radius < 0) {
+      orbs[i]!.x = radius / pageWidth
+      orbs[i]!.vx = Math.abs(orbs[i]!.vx)
     }
-    if (orb.x * pageWidth + radius > pageWidth) {
-      orb.x = (pageWidth - radius) / pageWidth
-      orb.vx = -Math.abs(orb.vx)
+    if (orbs[i]!.x * pageWidth + radius > pageWidth) {
+      orbs[i]!.x = (pageWidth - radius) / pageWidth
+      orbs[i]!.vx = -Math.abs(orbs[i]!.vx)
     }
-    if (orb.y * pageHeight - radius < 0) {
-      orb.y = radius / pageHeight
-      orb.vy = Math.abs(orb.vy)
+    if (orbs[i]!.y * pageHeight - radius < 0) {
+      orbs[i]!.y = radius / pageHeight
+      orbs[i]!.vy = Math.abs(orbs[i]!.vy)
     }
-    if (orb.y * pageHeight + radius > pageHeight - BOTTOM_GAP) {
-      orb.y = (pageHeight - BOTTOM_GAP - radius) / pageHeight
-      orb.vy = -Math.abs(orb.vy)
+    if (orbs[i]!.y * pageHeight + radius > pageHeight - BOTTOM_GAP) {
+      orbs[i]!.y = (pageHeight - BOTTOM_GAP - radius) / pageHeight
+      orbs[i]!.vy = -Math.abs(orbs[i]!.vy)
     }
   }
 
   // Orb 之间的碰撞
-  for (let i = 0; i < orbs.value.length; i++) {
-    const a = orbs.value[i]!
-    const aRadius = a.r * minSize
-    for (let j = i + 1; j < orbs.value.length; j++) {
-      const b = orbs.value[j]!
-      const bRadius = b.r * minSize
-      const dx = (b.x - a.x) * pageWidth
-      const dy = (b.y - a.y) * pageHeight
+  for (let i = 0; i < orbs.length; i++) {
+    const aRadius = orbs[i]!.r * minSize
+    for (let j = i + 1; j < orbs.length; j++) {
+      const bRadius = orbs[j]!.r * minSize
+      const dx = (orbs[j]!.x - orbs[i]!.x) * pageWidth
+      const dy = (orbs[j]!.y - orbs[i]!.y) * pageHeight
       const dist = Math.sqrt(dx * dx + dy * dy)
       const minDist = aRadius + bRadius + 20
 
       if (dist < minDist && dist > 0.1) {
-        const force = (minDist - dist) * 0.8  // 稍微增加力系数
+        const force = (minDist - dist) * 0.8
         const nx = dx / dist
         const ny = dy / dist
 
-        // 只使用 dt，不乘以 60
-        a.vx -= nx * force * dt
-        a.vy -= ny * force * dt
-        b.vx += nx * force * dt
-        b.vy += ny * force * dt
+        // 直接通过索引修改，避免中间变量引用
+        orbs[i]!.vx = orbs[i]!.vx - nx * force * dt
+        orbs[i]!.vy = orbs[i]!.vy - ny * force * dt
+        orbs[j]!.vx = orbs[j]!.vx + nx * force * dt
+        orbs[j]!.vy = orbs[j]!.vy + ny * force * dt
       }
     }
   }
 
+  // 触发响应式更新
+
   // 更新主障碍物位置（第一个 orb）
-  const mainOrb = orbs.value[0]!
+  const mainOrb = orbs[0]!
   obstaclePosition.value = { x: mainOrb.x, y: mainOrb.y }
 
   // 使用 CSS transform 移动主障碍物
@@ -285,7 +273,7 @@ const performLayout = (timestamp: number = 0) => {
   }
 
   // 更新次要 orbs 的视觉位置
-  secondaryOrbs.value = orbs.value.slice(1).map(orb => ({
+  secondaryOrbs.value = orbs.slice(1).map(orb => ({
     x: orb.x * pageWidth - orb.r * minSize,
     y: orb.y * pageHeight - orb.r * minSize,
     r: orb.r * minSize,
@@ -294,7 +282,7 @@ const performLayout = (timestamp: number = 0) => {
   }))
 
   // 生成圆形障碍物数组
-  const circleObstacles: CircleObstacle[] = orbs.value.map(orb => ({
+  const circleObstacles: CircleObstacle[] = orbs.map(orb => ({
     cx: orb.x * pageWidth,
     cy: orb.y * pageHeight,
     r: orb.r * minSize,
@@ -312,81 +300,78 @@ const performLayout = (timestamp: number = 0) => {
   const columnWidth = Math.floor((maxContentWidth - totalGutter) / columnCount)
   const contentLeft = Math.round((pageWidth - (columnCount * columnWidth + (columnCount - 1) * COL_GAP)) / 2)
 
-  // 多列布局 - 连续流动
+  // 多列布局 - 按段落分配到各列
   const allBodyLines: PositionedLine[] = []
   const newDropCaps: DropCap[] = []
 
-  // 逐列布局，文本在列间流动
-  let cursor: LayoutCursor = { segmentIndex: 0, graphemeIndex: 0 }
-  const processedDropCaps = new Set<number>()  // 记录已处理的段首
+  // 计算每列应该分配多少段落
+  const parasPerColumn = Math.ceil(paragraphs.value.length / columnCount)
 
+  // 逐列布局
   for (let colIndex = 0; colIndex < columnCount; colIndex++) {
     const columnX = contentLeft + colIndex * (columnWidth + COL_GAP)
-    const rects: RectObstacle[] = []
+    let currentY = GUTTER + 20
 
-    // 检查是否文本已全部布局完
-    const textExhausted = cursor.segmentIndex === 0 && cursor.graphemeIndex === 0 && colIndex > 0
-    if (textExhausted) break
+    // 计算当前列应该布局的段落范围
+    const startPara = colIndex * parasPerColumn
+    const endPara = Math.min(startPara + parasPerColumn, paragraphs.value.length)
 
-    // 检查当前 cursor 位置是否对应某个需要段首效果的段落
-    for (let i = 0; i < paragraphs.value.length; i++) {
-      const para = paragraphs.value[i]!
-      if (!para.hasDropCap || processedDropCaps.has(i)) continue
+    // 在当前列布局指定的段落
+    for (let paraIndex = startPara; paraIndex < endPara; paraIndex++) {
+      const para = paragraphs.value[paraIndex]!
+      const rects: RectObstacle[] = []
 
-      const paraStart = paraStartIndices[i] || 0
-      const dropCapArrayIndex = newDropCaps.length  // 当前段首在数组中的索引
-
-      // 如果当前 cursor 在或刚超过这个段落的起始位置，添加段首
-      if (cursor.graphemeIndex <= paraStart + 10) {  // 在段落起始附近
+      // 如果需要段首效果，添加障碍物
+      if (para.hasDropCap) {
+        const dropCapArrayIndex = newDropCaps.length
         const dcWidth = dropCapWidths[dropCapArrayIndex]!
         const dcSize = dropCapSizes[dropCapArrayIndex]!
         const dropCapTotalW = Math.ceil(dcWidth) + 10
 
         rects.push({
           x: columnX - 2,
-          y: GUTTER + 20 - 2,
+          y: currentY - 2,
           width: dropCapTotalW,
           height: DROP_CAP_LINES * lineHeight + 2,
         })
 
+        // 记录首字位置
         newDropCaps.push({
           text: para.text[0] || '',
           x: columnX,
-          y: GUTTER + 20,
+          y: currentY,
           size: dcSize,
-          paragraphIndex: i,
+          paragraphIndex: paraIndex,
         })
+      }
 
-        processedDropCaps.add(i)
-        break  // 只处理一个段首
+      // 布局当前段落 - 使用预处理的段落数据
+      const preparedPara = preparedParagraphs[paraIndex]
+      if (!preparedPara) continue
+
+      const result = layoutColumn(
+        preparedPara,
+        { segmentIndex: 0, graphemeIndex: 0 },
+        columnX,
+        currentY,
+        columnWidth,
+        pageHeight - GUTTER - 20 - BOTTOM_GAP,
+        lineHeight,
+        circleObstacles,
+        rects,
+        isNarrow,
+        font,
+      )
+
+      allBodyLines.push(...result.lines)
+
+      // 更新下一段落的起始Y位置
+      if (result.lines.length > 0) {
+        const lastLine = result.lines[result.lines.length - 1]!
+        currentY = lastLine.y + lineHeight * 1.5  // 段落间距
       }
     }
-
-    // 布局当前列
-    const result = layoutColumn(
-      preparedText,
-      cursor,
-      columnX,
-      GUTTER + 20,
-      columnWidth,
-      pageHeight - GUTTER - 20 - BOTTOM_GAP,
-      lineHeight,
-      circleObstacles,
-      rects,
-      isNarrow,
-      font,
-    )
-
-    allBodyLines.push(...result.lines)
-    cursor = result.cursor
-
-    // 检查是否还有剩余内容
-    const hasMore = cursor.segmentIndex > 0 || cursor.graphemeIndex > 0
-    if (!hasMore) break
   }
-
-  dropCaps.value = newDropCaps
-  layoutLines.value = allBodyLines
 
   dropCaps.value = newDropCaps
   layoutLines.value = allBodyLines

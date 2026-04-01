@@ -3,7 +3,7 @@
  * 实时文字避让算法：像水流一样环绕障碍物
  */
 
-import { prepareWithSegments, layoutNextLine, type LayoutCursor, layoutWithLines } from '@chenglou/pretext'
+import { prepareWithSegments, layoutNextLine, type LayoutCursor } from '@chenglou/pretext'
 
 /** 水平区间 */
 export interface Interval {
