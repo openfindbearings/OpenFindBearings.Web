@@ -70,18 +70,39 @@ npm run preview
 
 ## ⚙️ 配置说明
 
-### API 模式切换
+### API 配置
 
-在项目根目录创建 `.env` 文件：
+在项目根目录创建 `.env` 文件（参考 `.env.example`）：
 
 ```bash
-# 使用模拟数据（默认）
+# API 模式：mock（模拟数据）或 real（真实 API）
 VITE_API_MODE=mock
 
-# 使用真实 API
-VITE_API_MODE=real
+# 远程 API 地址（当 VITE_API_MODE=real 时生效）
 VITE_API_URL=http://localhost:5000
 ```
+
+**不同环境的配置示例：**
+
+```bash
+# 本地开发（连接本地后端）
+VITE_API_MODE=real
+VITE_API_URL=http://localhost:5000
+
+# 开发环境
+VITE_API_MODE=real
+VITE_API_URL=https://api-dev.openfindbearings.com
+
+# 测试环境
+VITE_API_MODE=real
+VITE_API_URL=https://api-test.openfindbearings.com
+
+# 生产环境
+VITE_API_MODE=real
+VITE_API_URL=https://api.openfindbearings.com
+```
+
+**注意：** 修改 `.env` 文件后需要重启开发服务器才能生效。
 
 ### 落地页文字配置
 
