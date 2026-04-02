@@ -56,6 +56,16 @@ function transformBearingDetail(item: any): BearingDetail {
   }
 }
 
+interface SearchResponse {
+  items: Bearing[]
+  totalCount: number
+  page: number
+  pageSize: number
+  totalPages: number
+  hasPrevious: boolean
+  hasNext: boolean
+}
+
 export async function searchBearings(params: SearchParams): Promise<PagedResult<Bearing>> {
   const response = await apiClient.get('/api/bearings/search', {
     params: {
@@ -74,13 +84,13 @@ export async function searchBearings(params: SearchParams): Promise<PagedResult<
       page: params.page || 1,
       pageSize: params.pageSize || 20
     }
-  }) as ApiResponse<Bearing[]>
+  }) as ApiResponse<SearchResponse>
 
   return {
-    items: response.data.map(transformBearing),
-    total: response.totalCount,
-    page: response.page,
-    pageSize: response.pageSize
+    items: response.data.items.map(transformBearing),
+    total: response.data.totalCount,
+    page: response.data.page,
+    pageSize: response.data.pageSize
   }
 }
 
@@ -125,6 +135,7 @@ export async function getBearingTypes(): Promise<BearingType[]> {
     id: item.id,
     name: item.name,
     code: item.code,
-    category: item.category
+    category: item.category,
+    bearingCount: item.bearingCount || 0
   }))
 }

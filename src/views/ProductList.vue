@@ -123,11 +123,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { message } from 'ant-design-vue'
 import type { Product } from '../api/products'
-import { brands, bearingTypes, precisionGrades, sealTypes } from '../api/products'
+import { bearingTypes, precisionGrades, sealTypes } from '../api/products'
 import { getProducts } from '../api/index'
 import { useInquiryStore } from '../composables/useInquiry'
 
@@ -149,15 +149,54 @@ const innerDiameterRange = ref<[number, number]>([0, 200])
 const outerDiameterRange = ref<[number, number]>([0, 300])
 
 const typeOptions = bearingTypes.map(t => ({ label: t, value: t }))
-const brandOptions = brands.map(b => ({ label: b, value: b }))
+
+// 品牌列表（从后端加载）
+const brandList = ref<{ id: string; name: string }[]>([])
+const brandOptions = computed(() => brandList.value.map(b => ({ label: b.name, value: b.name })))
+const brandNameToId = computed(() => {
+  const map = new Map<string, string>()
+  brandList.value.forEach(b => map.set(b.name, b.id))
+  return map
+})
 const precisionOptions = precisionGrades.map(p => ({ label: p, value: p }))
 const sealTypeOptions = sealTypes.map(s => ({ label: s, value: s }))
 
 const fetchProducts = async () => {
+  console.log('[fetchProducts] keyword:', keyword.value, 'types:', selectedTypes.value, 'brands:', selectedBrands.value)
+
+  // 如果有类型筛选但没有关键词，把类型名称作为关键词搜索
+  let searchKeyword = keyword.value
+  if (!searchKeyword && selectedTypes.value.length > 0) {
+    searchKeyword = selectedTypes.value[0]
+    console.log('[fetchProducts] 使用类型名称作为关键词:', searchKeyword)
+  }
+
+  // 把品牌名称转换为 brandId
+  const brandIds: string[] = []
+  if (selectedBrands.value.length > 0) {
+    selectedBrands.value.forEach(name => {
+      const id = brandNameToId.value.get(name)
+      if (id) brandIds.push(id)
+    })
+    console.log('[fetchProducts] 品牌名称:', selectedBrands.value, '-> IDs:', brandIds)
+  }
+
+  // 检查关键词是否是品牌名称（支持部分匹配）
+  if (searchKeyword && brandList.value.length > 0) {
+    const matchedBrand = brandList.value.find(b =>
+      b.name.toLowerCase().includes(searchKeyword!.toLowerCase()) ||
+      searchKeyword!.toLowerCase().includes(b.name.toLowerCase())
+    )
+    if (matchedBrand) {
+      console.log('[fetchProducts] 关键词匹配品牌:', matchedBrand.name, '-> 使用 brandId:', matchedBrand.id)
+      brandIds.push(matchedBrand.id)
+      searchKeyword = '' // 清空关键词，使用 brandId 搜索
+    }
+  }
+
   const result = await getProducts({
-    keyword: keyword.value || undefined,
-    types: selectedTypes.value.length > 0 ? selectedTypes.value : undefined,
-    brands: selectedBrands.value.length > 0 ? selectedBrands.value : undefined,
+    keyword: searchKeyword || undefined,
+    brandIds: brandIds.length > 0 ? brandIds : undefined,
     precisions: selectedPrecisions.value.length > 0 ? selectedPrecisions.value : undefined,
     sealTypes: selectedSealTypes.value.length > 0 ? selectedSealTypes.value : undefined,
     minInnerDiameter: innerDiameterRange.value[0] > 0 ? innerDiameterRange.value[0] : undefined,
@@ -167,7 +206,7 @@ const fetchProducts = async () => {
     page: currentPage.value,
     pageSize: pageSize.value
   })
-  
+  console.log('[fetchProducts] result:', result)
   products.value = result.items
   total.value = result.total
 }
@@ -203,7 +242,23 @@ const handleAddToInquiry = (product: Product) => {
   message.success('已加入询价单')
 }
 
+// 加载品牌列表
+const loadBrands = async () => {
+  try {
+    const response = await fetch('/api/brands')
+    const data = await response.json()
+    if (data.success && data.data) {
+      brandList.value = data.data.map((b: any) => ({ id: b.id, name: b.name }))
+    }
+  } catch (e) {
+    console.error('加载品牌列表失败:', e)
+  }
+}
+
 onMounted(async () => {
+  // 先加载品牌列表
+  await loadBrands()
+
   if (route.query.keyword) {
     keyword.value = route.query.keyword as string
   }

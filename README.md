@@ -80,6 +80,9 @@ VITE_API_MODE=mock
 
 # 远程 API 地址（当 VITE_API_MODE=real 时生效）
 VITE_API_URL=http://localhost:5000
+
+# 认证服务器地址
+VITE_AUTH_URL=https://auth.abcsxl.com
 ```
 
 **不同环境的配置示例：**

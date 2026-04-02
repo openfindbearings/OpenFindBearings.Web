@@ -7,6 +7,7 @@ export interface ProductListParams {
   keyword?: string
   types?: string[]
   brands?: string[]
+  brandIds?: string[]
   minInnerDiameter?: number
   maxInnerDiameter?: number
   minOuterDiameter?: number
@@ -50,43 +51,40 @@ function transformBearingToProduct(bearing: any): Product {
 
 export async function getProducts(params: ProductListParams = {}): Promise<ProductListResult> {
   if (API_MODE === 'real') {
-    try {
-      const result = await bearingApi.searchBearings({
-        keyword: params.keyword,
-        minInnerDiameter: params.minInnerDiameter,
-        maxInnerDiameter: params.maxInnerDiameter,
-        minOuterDiameter: params.minOuterDiameter,
-        maxOuterDiameter: params.maxOuterDiameter,
-        page: params.page,
-        pageSize: params.pageSize
-      })
-      
-      let items = result.items.map(transformBearingToProduct)
-      
-      if (params.types && params.types.length > 0) {
-        items = items.filter(p => params.types!.includes(p.type))
-      }
-      
-      if (params.brands && params.brands.length > 0) {
-        items = items.filter(p => params.brands!.includes(p.brand))
-      }
-      
-      if (params.precisions && params.precisions.length > 0) {
-        items = items.filter(p => params.precisions!.includes(p.precision))
-      }
-      
-      if (params.sealTypes && params.sealTypes.length > 0) {
-        items = items.filter(p => params.sealTypes!.includes(p.sealType))
-      }
-      
-      return {
-        items,
-        total: result.total,
-        page: result.page,
-        pageSize: result.pageSize
-      }
-    } catch (error) {
-      console.error('API call failed, using mock data:', error)
+    const result = await bearingApi.searchBearings({
+      keyword: params.keyword,
+      brandId: params.brandIds?.[0],
+      minInnerDiameter: params.minInnerDiameter,
+      maxInnerDiameter: params.maxInnerDiameter,
+      minOuterDiameter: params.minOuterDiameter,
+      maxOuterDiameter: params.maxOuterDiameter,
+      page: params.page,
+      pageSize: params.pageSize
+    })
+
+    let items = result.items.map(transformBearingToProduct)
+
+    if (params.types && params.types.length > 0) {
+      items = items.filter(p => params.types!.includes(p.type))
+    }
+
+    if (params.brands && params.brands.length > 0) {
+      items = items.filter(p => params.brands!.includes(p.brand))
+    }
+
+    if (params.precisions && params.precisions.length > 0) {
+      items = items.filter(p => params.precisions!.includes(p.precision))
+    }
+
+    if (params.sealTypes && params.sealTypes.length > 0) {
+      items = items.filter(p => params.sealTypes!.includes(p.sealType))
+    }
+
+    return {
+      items,
+      total: result.total,
+      page: result.page,
+      pageSize: result.pageSize
     }
   }
   
@@ -148,47 +146,36 @@ export async function getProducts(params: ProductListParams = {}): Promise<Produ
 
 export async function getProductById(id: string): Promise<Product | undefined> {
   if (API_MODE === 'real') {
-    try {
-      const bearing = await bearingApi.getBearingById(id)
-      if (bearing) {
-        return transformBearingToProduct(bearing)
-      }
-    } catch (error) {
-      console.error('API call failed, using mock data:', error)
+    const bearing = await bearingApi.getBearingById(id)
+    if (bearing) {
+      return transformBearingToProduct(bearing)
     }
+    return undefined
   }
-  
+
   return mockProducts.find(p => p.id === id)
 }
 
 export async function getRecommendedProducts(count: number = 8): Promise<Product[]> {
   if (API_MODE === 'real') {
-    try {
-      const bearings = await bearingApi.getHotBearings(count)
-      return bearings.map(transformBearingToProduct)
-    } catch (error) {
-      console.error('API call failed, using mock data:', error)
-    }
+    const bearings = await bearingApi.getHotBearings(count)
+    return bearings.map(transformBearingToProduct)
   }
-  
+
   return mockProducts.slice(0, count)
 }
 
 export async function getHotCategories(): Promise<{ name: string; count: number }[]> {
   if (API_MODE === 'real') {
-    try {
-      const types = await bearingApi.getBearingTypes()
-      return types.map(t => ({ name: t.name, count: 0 }))
-    } catch (error) {
-      console.error('API call failed, using mock data:', error)
-    }
+    const types = await bearingApi.getBearingTypes()
+    return types.map(t => ({ name: t.name, count: t.bearingCount || 0 }))
   }
-  
+
   const typeCount = new Map<string, number>()
   mockProducts.forEach(p => {
     typeCount.set(p.type, (typeCount.get(p.type) || 0) + 1)
   })
-  
+
   return Array.from(typeCount.entries())
     .map(([name, count]) => ({ name, count }))
     .sort((a, b) => b.count - a.count)

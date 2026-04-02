@@ -52,6 +52,7 @@ export interface BearingType {
   name: string
   code?: string
   category?: string
+  bearingCount?: number
 }
 
 export interface SearchParams {
