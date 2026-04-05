@@ -3,7 +3,6 @@
     <div class="container">
       <div class="page-header">
         <h1 class="page-title">用户中心</h1>
-        <a-button @click="handleLogout">退出登录</a-button>
       </div>
 
       <div v-if="user" class="user-content">
@@ -18,23 +17,61 @@
         </div>
 
         <a-tabs v-model:activeKey="activeTab" class="user-tabs">
-          <a-tab-pane key="inquiries" tab="我的询价单">
-            <a-table :dataSource="inquiries" :columns="inquiryColumns" :pagination="false">
-              <template #bodyCell="{ column, record }">
-                <template v-if="column.key === 'status'">
-                  <a-tag :color="getStatusColor(record.status)">
-                    {{ getStatusText(record.status) }}
-                  </a-tag>
-                </template>
-                <template v-else-if="column.key === 'action'">
-                  <a-button type="link" @click="router.push(`/inquiry/${record.id}`)">
-                    查看详情
-                  </a-button>
-                </template>
-              </template>
-            </a-table>
+          <!-- My Procurement -->
+          <a-tab-pane key="inquiries" tab="我的采购">
+            <div class="section-intro">
+              <h3>我的询价单</h3>
+              <p>管理您发布的询价需求，查看收到的报价</p>
+            </div>
+            <a-card class="action-card" @click="router.push('/user/inquiries')">
+              <div class="action-content">
+                <div class="action-icon" style="background: #e6f7ff; color: #1890ff;">
+                  <FileTextOutlined />
+                </div>
+                <div class="action-info">
+                  <h4>我的询价单</h4>
+                  <p>共 {{ inquiryStats.total }} 个询价单</p>
+                </div>
+                <RightOutlined class="action-arrow" />
+              </div>
+            </a-card>
           </a-tab-pane>
-          
+
+          <!-- My Sales -->
+          <a-tab-pane key="sales" tab="我的销售">
+            <div class="section-intro">
+              <h3>我的销售</h3>
+              <p>浏览市场询价单，管理您的报价</p>
+            </div>
+            <div class="action-cards">
+              <a-card class="action-card" @click="router.push('/market/inquiries')">
+                <div class="action-content">
+                  <div class="action-icon" style="background: #f6ffed; color: #52c41a;">
+                    <ShopOutlined />
+                  </div>
+                  <div class="action-info">
+                    <h4>可报价市场</h4>
+                    <p>浏览可报价的询价单，抢占商机</p>
+                  </div>
+                  <RightOutlined class="action-arrow" />
+                </div>
+              </a-card>
+
+              <a-card class="action-card" @click="router.push('/user/quotes')">
+                <div class="action-content">
+                  <div class="action-icon" style="background: #fff7e6; color: #fa8c16;">
+                    <FormOutlined />
+                  </div>
+                  <div class="action-info">
+                    <h4>我的报价</h4>
+                    <p>查看已提交的报价状态</p>
+                  </div>
+                  <RightOutlined class="action-arrow" />
+                </div>
+              </a-card>
+            </div>
+          </a-tab-pane>
+
           <a-tab-pane key="profile" tab="企业信息">
             <a-descriptions title="企业信息" bordered>
               <a-descriptions-item label="企业名称">{{ user.company }}</a-descriptions-item>
@@ -61,58 +98,39 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { UserOutlined } from '@ant-design/icons-vue'
+import { UserOutlined, FileTextOutlined, ShopOutlined, FormOutlined, RightOutlined } from '@ant-design/icons-vue'
+import { inquiryApi } from '../api'
 
 const router = useRouter()
 
 const user = ref<{ username: string; company: string } | null>(null)
 const activeTab = ref('inquiries')
 
-const inquiries = ref([
-  { id: 'RFQ-20260327-001', itemCount: 5, status: 'submitted', createdAt: '2026-03-27' },
-  { id: 'RFQ-20260325-002', itemCount: 3, status: 'quoted', createdAt: '2026-03-25' }
-])
+const inquiryStats = ref({
+  total: 0,
+  draft: 0,
+  published: 0,
+  quoting: 0,
+})
 
-const inquiryColumns = [
-  { title: '询价单号', dataIndex: 'id', key: 'id' },
-  { title: '产品数量', dataIndex: 'itemCount', key: 'itemCount' },
-  { title: '状态', key: 'status' },
-  { title: '提交日期', dataIndex: 'createdAt', key: 'createdAt' },
-  { title: '操作', key: 'action' }
-]
-
-const getStatusColor = (status: string) => {
-  const colors: Record<string, string> = {
-    submitted: 'processing',
-    quoting: 'blue',
-    quoted: 'success',
-    accepted: 'green',
-    rejected: 'red'
+const loadStats = async () => {
+  try {
+    const result = await inquiryApi.getMyInquiries({ pageSize: 100 })
+    inquiryStats.value.total = result.total
+  } catch (error) {
+    console.error('Failed to load stats:', error)
   }
-  return colors[status] || 'default'
-}
-
-const getStatusText = (status: string) => {
-  const texts: Record<string, string> = {
-    submitted: '已提交',
-    quoting: '报价中',
-    quoted: '已报价',
-    accepted: '已接受',
-    rejected: '已拒绝'
-  }
-  return texts[status] || status
-}
-
-const handleLogout = () => {
-  localStorage.removeItem('openfindbearings_user')
-  user.value = null
-  router.push('/user/login')
 }
 
 onMounted(() => {
   const userData = localStorage.getItem('openfindbearings_user')
   if (userData) {
-    user.value = JSON.parse(userData)
+    try {
+      user.value = JSON.parse(userData)
+      loadStats()
+    } catch {
+      // ignore
+    }
   }
 })
 </script>
@@ -185,6 +203,74 @@ onMounted(() => {
 
 .user-tabs :deep(.ant-tabs-nav) {
   margin-bottom: 24px;
+}
+
+.section-intro {
+  margin-bottom: 16px;
+}
+
+.section-intro h3 {
+  margin: 0 0 8px 0;
+  font-size: 16px;
+  color: #333;
+}
+
+.section-intro p {
+  margin: 0;
+  color: #666;
+  font-size: 14px;
+}
+
+.action-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.action-card {
+  cursor: pointer;
+  transition: all 0.3s;
+  border-radius: 8px;
+}
+
+.action-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.action-content {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.action-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+}
+
+.action-info {
+  flex: 1;
+}
+
+.action-info h4 {
+  margin: 0 0 4px 0;
+  font-size: 16px;
+  color: #333;
+}
+
+.action-info p {
+  margin: 0;
+  color: #666;
+  font-size: 13px;
+}
+
+.action-arrow {
+  color: #999;
 }
 
 .not-logged-in {

@@ -6,14 +6,14 @@
         :model="formState"
         @finish="handleSubmit"
       >
-        <a-form-item name="username" :rules="[{ required: true, message: '请输入用户名' }]">
-          <a-input v-model:value="formState.username" placeholder="用户名" size="large">
+        <a-form-item name="email" :rules="[{ required: true, type: 'email', message: '请输入正确的邮箱' }]">
+          <a-input v-model:value="formState.email" placeholder="邮箱" size="large">
             <template #prefix>
               <UserOutlined />
             </template>
           </a-input>
         </a-form-item>
-        
+
         <a-form-item name="password" :rules="[{ required: true, message: '请输入密码' }]">
           <a-input-password v-model:value="formState.password" placeholder="密码" size="large">
             <template #prefix>
@@ -21,17 +21,40 @@
             </template>
           </a-input-password>
         </a-form-item>
-        
+
         <a-form-item>
           <a-button type="primary" html-type="submit" size="large" block :loading="loading">
             登录
           </a-button>
         </a-form-item>
       </a-form>
-      <div class="login-tip">
-        <span>提示：输入任意用户名和密码即可登录</span>
+
+      <div class="login-links">
+        <a @click="showRegister = true">注册账号</a>
       </div>
     </div>
+
+    <!-- 注册弹窗 -->
+    <a-modal
+      v-model:visible="showRegister"
+      title="用户注册"
+      :footer="null"
+      @cancel="showRegister = false"
+    >
+      <a-form :model="registerState" @finish="handleRegister">
+        <a-form-item name="email" :rules="[{ required: true, type: 'email', message: '请输入正确的邮箱' }]">
+          <a-input v-model:value="registerState.email" placeholder="邮箱" />
+        </a-form-item>
+        <a-form-item name="password" :rules="[{ required: true, message: '请输入密码' }]">
+          <a-input-password v-model:value="registerState.password" placeholder="密码" />
+        </a-form-item>
+        <a-form-item>
+          <a-button type="primary" html-type="submit" block :loading="registerLoading">
+            注册
+          </a-button>
+        </a-form-item>
+      </a-form>
+    </a-modal>
   </div>
 </template>
 
@@ -40,26 +63,68 @@ import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { UserOutlined, LockOutlined } from '@ant-design/icons-vue'
+import { loginWithPassword, registerUser, parseJwt, tokenStorage } from '../api/auth'
 
 const router = useRouter()
 const loading = ref(false)
+const showRegister = ref(false)
+const registerLoading = ref(false)
 
 const formState = reactive({
-  username: '',
+  email: '',
   password: ''
 })
 
-const handleSubmit = () => {
+const registerState = reactive({
+  email: '',
+  password: ''
+})
+
+const handleSubmit = async () => {
   loading.value = true
-  setTimeout(() => {
-    localStorage.setItem('openfindbearings_user', JSON.stringify({
-      username: formState.username,
-      company: '示例公司'
-    }))
+  try {
+    const data = await loginWithPassword(formState.email, formState.password)
+
+    // 保存 token
+    tokenStorage.setTokens(data.access_token, data.refresh_token)
+
+    // 解析 token 获取用户信息
+    const payload = parseJwt(data.access_token)
+    const user = {
+      username: payload?.preferred_username || payload?.name || formState.email,
+      email: formState.email,
+      company: payload?.company || ''
+    }
+    localStorage.setItem('openfindbearings_user', JSON.stringify(user))
+
     message.success('登录成功')
-    loading.value = false
     router.push('/user/profile')
-  }, 500)
+  } catch (error: any) {
+    console.error('登录失败:', error)
+    message.error(error.response?.data?.error_description || '登录失败，请检查用户名和密码')
+  } finally {
+    loading.value = false
+  }
+}
+
+const handleRegister = async () => {
+  registerLoading.value = true
+  try {
+    await registerUser({
+      email: registerState.email,
+      password: registerState.password
+    })
+    message.success('注册成功，请登录')
+    showRegister.value = false
+    // 填充登录表单
+    formState.email = registerState.email
+    formState.password = ''
+  } catch (error: any) {
+    console.error('注册失败:', error)
+    message.error(error.response?.data?.errors?.[0]?.description || error.response?.data?.message || '注册失败')
+  } finally {
+    registerLoading.value = false
+  }
 }
 </script>
 
@@ -90,10 +155,13 @@ const handleSubmit = () => {
   color: #333;
 }
 
-.login-tip {
+.login-links {
   text-align: center;
-  color: #999;
-  font-size: 13px;
   margin-top: 16px;
+}
+
+.login-links a {
+  color: #1890ff;
+  cursor: pointer;
 }
 </style>

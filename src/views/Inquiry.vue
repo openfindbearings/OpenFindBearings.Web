@@ -2,7 +2,7 @@
   <div class="inquiry-page">
     <div class="container">
       <h1 class="page-title">询价单</h1>
-      
+
       <div v-if="items.length > 0" class="inquiry-content">
         <div class="inquiry-list">
           <a-table :dataSource="items" :columns="columns" :pagination="false" rowKey="product.id">
@@ -10,7 +10,11 @@
               <template v-if="column.key === 'product'">
                 <div class="product-cell">
                   <div class="product-brand">{{ record.product.brand }}</div>
-                  <div class="product-model">{{ record.product.model }}</div>
+                  <div class="product-model">
+                    <a @click="router.push(`/products/${record.product.id}`)" class="product-link">
+                      {{ record.product.model }}
+                    </a>
+                  </div>
                   <div class="product-spec">
                     {{ record.product.innerDiameter }}×{{ record.product.outerDiameter }}×{{ record.product.width }}mm
                   </div>
@@ -25,17 +29,17 @@
                 </template>
               </template>
               <template v-else-if="column.key === 'quantity'">
-                <a-input-number 
-                  v-model:value="record.quantity" 
-                  :min="1" 
+                <a-input-number
+                  v-model:value="record.quantity"
+                  :min="1"
                   :max="record.product.stock"
                   @change="handleQuantityChange(record.product.id, record.quantity)"
                 />
               </template>
               <template v-else-if="column.key === 'remark'">
-                <a-input 
-                  v-model:value="record.remark" 
-                  placeholder="请输入备注" 
+                <a-input
+                  v-model:value="record.remark"
+                  placeholder="请输入备注"
                   @change="handleRemarkChange(record.product.id, record.remark)"
                 />
               </template>
@@ -51,21 +55,79 @@
           </a-table>
         </div>
 
-        <div class="inquiry-summary">
-          <div class="summary-item">
-            <span class="label">产品总数:</span>
-            <span class="value">{{ totalCount }} 件</span>
-          </div>
-          <div class="summary-item">
-            <span class="label">商品金额:</span>
-            <span class="value">¥{{ totalPrice }}</span>
-          </div>
-          <a-button type="primary" size="large" block @click="handleSubmit">
-            提交询价
-          </a-button>
-          <a-button block style="margin-top: 12px" @click="handleClear">
-            清空询价单
-          </a-button>
+        <div class="inquiry-sidebar">
+          <!-- 联系信息 -->
+          <a-card title="联系信息" class="info-card">
+            <a-form layout="vertical">
+              <a-form-item label="联系邮箱">
+                <a-input
+                  v-model:value="form.contactEmail"
+                  placeholder="请输入联系邮箱"
+                />
+              </a-form-item>
+              <a-form-item label="联系电话">
+                <a-input
+                  v-model:value="form.contactPhone"
+                  placeholder="请输入联系电话"
+                />
+              </a-form-item>
+              <a-form-item label="期望交期">
+                <a-date-picker
+                  v-model:value="expectedDeliveryDate"
+                  placeholder="选择期望交期"
+                  style="width: 100%"
+                />
+              </a-form-item>
+              <a-form-item label="备注">
+                <a-textarea
+                  v-model:value="form.remark"
+                  placeholder="请输入备注信息"
+                  :rows="3"
+                />
+              </a-form-item>
+            </a-form>
+          </a-card>
+
+          <!-- 汇总信息 -->
+          <a-card title="询价汇总" class="summary-card">
+            <div class="summary-item">
+              <span class="label">产品总数:</span>
+              <span class="value">{{ totalCount }} 件</span>
+            </div>
+            <div class="summary-item">
+              <span class="label">商品金额:</span>
+              <span class="value">¥{{ totalPrice }}</span>
+            </div>
+
+            <a-divider />
+
+            <a-button
+              type="primary"
+              size="large"
+              block
+              :loading="submitting"
+              @click="handleSubmit(false)"
+            >
+              保存为草稿
+            </a-button>
+            <a-button
+              type="primary"
+              size="large"
+              block
+              :loading="submitting"
+              style="margin-top: 12px"
+              @click="handleSubmit(true)"
+            >
+              立即发布询价
+            </a-button>
+            <a-button
+              block
+              style="margin-top: 12px"
+              @click="handleClear"
+            >
+              清空询价单
+            </a-button>
+          </a-card>
         </div>
       </div>
 
@@ -81,13 +143,24 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { useInquiryStore } from '../composables/useInquiry'
+import { inquiryApi } from '../api'
+import dayjs from 'dayjs'
 
 const router = useRouter()
 const { items, removeFromInquiry, updateQuantity, updateRemark, clearInquiry } = useInquiryStore()
+
+const submitting = ref(false)
+const expectedDeliveryDate = ref<dayjs.Dayjs | null>(null)
+
+const form = ref({
+  contactEmail: '',
+  contactPhone: '',
+  remark: '',
+})
 
 const columns = [
   { title: '产品信息', key: 'product', width: '30%' },
@@ -123,10 +196,44 @@ const handleRemove = (productId: string) => {
   message.success('已删除')
 }
 
-const handleSubmit = () => {
-  message.success('询价单已提交！我们会尽快与您联系。')
-  clearInquiry()
-  router.push('/user/profile')
+const handleSubmit = async (publishImmediately: boolean) => {
+  if (items.value.length === 0) {
+    message.warning('询价单不能为空')
+    return
+  }
+
+  submitting.value = true
+  try {
+    // 创建询价单
+    const inquiry = await inquiryApi.createInquiry({
+      items: items.value.map(item => ({
+        productId: item.product.id,
+        quantity: item.quantity,
+        remark: item.remark,
+      })),
+      contactEmail: form.value.contactEmail,
+      contactPhone: form.value.contactPhone,
+      expectedDelivery: expectedDeliveryDate.value?.format('YYYY-MM-DD'),
+      remark: form.value.remark,
+      isPublic: true,
+    })
+
+    // 如果立即发布
+    if (publishImmediately) {
+      await inquiryApi.publishInquiry(inquiry.id)
+      message.success(`询价单 ${inquiry.id} 已发布！供应商可以开始报价了。`)
+    } else {
+      message.success(`询价单 ${inquiry.id} 已保存为草稿，您可以在用户中心查看。`)
+    }
+
+    // 清空询价单并跳转
+    clearInquiry()
+    router.push('/user/inquiries')
+  } catch (error: any) {
+    message.error(error.message || '提交失败，请重试')
+  } finally {
+    submitting.value = false
+  }
 }
 
 const handleClear = () => {
@@ -143,7 +250,7 @@ const handleClear = () => {
 }
 
 .container {
-  max-width: 1000px;
+  max-width: 1200px;
   margin: 0 auto;
   padding: 24px;
 }
@@ -157,7 +264,7 @@ const handleClear = () => {
 
 .inquiry-content {
   display: grid;
-  grid-template-columns: 1fr 280px;
+  grid-template-columns: 1fr 340px;
   gap: 24px;
 }
 
@@ -184,22 +291,36 @@ const handleClear = () => {
   margin-bottom: 4px;
 }
 
+.product-link {
+  color: #1890ff;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.product-link:hover {
+  text-decoration: underline;
+}
+
 .product-spec {
   font-size: 13px;
   color: #999;
 }
 
-.inquiry-summary {
-  background: #fff;
+.inquiry-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.info-card,
+.summary-card {
   border-radius: 8px;
-  padding: 24px;
-  height: fit-content;
 }
 
 .summary-item {
   display: flex;
   justify-content: space-between;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
   font-size: 15px;
 }
 

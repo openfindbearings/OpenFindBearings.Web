@@ -180,3 +180,33 @@ export async function getHotCategories(): Promise<{ name: string; count: number 
     .map(([name, count]) => ({ name, count }))
     .sort((a, b) => b.count - a.count)
 }
+
+// 询价单、报价单、市场 API 导出
+// 根据环境变量自动切换 Mock / 真实 API
+const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true'
+
+async function loadApis() {
+  if (USE_MOCK) {
+    console.log('[API] Using Mock API')
+    const mockInquiry = await import('./mock/inquiry')
+    const mockQuote = await import('./mock/quote')
+    const mockMarket = await import('./mock/market')
+    return {
+      inquiryApi: mockInquiry.inquiryApi,
+      quoteApi: mockQuote.quoteApi,
+      marketApi: mockMarket.marketApi,
+    }
+  } else {
+    console.log('[API] Using Real API')
+    const realInquiry = await import('./inquiry')
+    const realQuote = await import('./quote')
+    const realMarket = await import('./market')
+    return {
+      inquiryApi: realInquiry.inquiryApi,
+      quoteApi: realQuote.quoteApi,
+      marketApi: realMarket.marketApi,
+    }
+  }
+}
+
+export const { inquiryApi, quoteApi, marketApi } = await loadApis()

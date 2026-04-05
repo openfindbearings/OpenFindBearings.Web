@@ -5,11 +5,11 @@
         <span class="logo-icon">B</span>
         <span class="logo-text">轴承商城</span>
       </router-link>
-      
+
       <nav class="nav-links">
         <router-link to="/products">产品列表</router-link>
+        <router-link to="/market/inquiries">报价市场</router-link>
         <router-link to="/inquiry">询价单</router-link>
-        <router-link to="/user/profile">用户中心</router-link>
       </nav>
 
       <div class="header-actions">
@@ -18,18 +18,70 @@
             <a-button type="primary">询价单</a-button>
           </router-link>
         </a-badge>
-        <router-link to="/user/login" class="login-link">登录</router-link>
+
+        <template v-if="user">
+          <span class="user-name" @click="router.push('/user/profile')">{{ user.username }}</span>
+          <a @click="handleLogout" class="logout-link">退出</a>
+        </template>
+        <router-link v-else to="/user/login" class="login-link">登录</router-link>
       </div>
     </div>
   </a-layout-header>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { useInquiryStore } from '../composables/useInquiry'
+import { tokenStorage } from '../api/auth'
 
+const router = useRouter()
+const route = useRoute()
 const { items } = useInquiryStore()
 const inquiryCount = computed(() => items.value.length)
+
+const user = ref<{ username: string } | null>(null)
+
+const checkLoginStatus = () => {
+  const token = tokenStorage.getAccessToken()
+  if (token) {
+    const userData = localStorage.getItem('openfindbearings_user')
+    if (userData) {
+      try {
+        user.value = JSON.parse(userData)
+        return
+      } catch {
+        // ignore
+      }
+    }
+  }
+  user.value = null
+}
+
+// 监听路由变化，每次路由切换时检查登录状态
+watch(() => route.path, () => {
+  checkLoginStatus()
+})
+
+const handleLogout = () => {
+  tokenStorage.clearTokens()
+  user.value = null
+  router.push('/user/login')
+}
+
+// 监听 storage 变化（多标签页同步）
+const handleStorageChange = () => {
+  checkLoginStatus()
+}
+
+onMounted(() => {
+  checkLoginStatus()
+  window.addEventListener('storage', handleStorageChange)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('storage', handleStorageChange)
+})
 </script>
 
 <style scoped>
@@ -98,13 +150,26 @@ const inquiryCount = computed(() => items.value.length)
   text-decoration: none;
 }
 
-.login-link {
+.login-link,
+.logout-link {
   color: #666;
   text-decoration: none;
   font-size: 14px;
+  cursor: pointer;
 }
 
-.login-link:hover {
+.login-link:hover,
+.logout-link:hover {
+  color: #1890ff;
+}
+
+.user-name {
+  color: #333;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.user-name:hover {
   color: #1890ff;
 }
 </style>

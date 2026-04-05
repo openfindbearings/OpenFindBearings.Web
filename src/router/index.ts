@@ -46,6 +46,41 @@ const routes: RouteRecordRaw[] = [
     path: '/user/profile',
     name: 'UserCenter',
     component: () => import('../views/UserCenter.vue')
+  },
+  {
+    path: '/user/inquiries',
+    name: 'MyInquiries',
+    component: () => import('../views/user/MyInquiries.vue')
+  },
+  {
+    path: '/user/inquiries/:id',
+    name: 'MyInquiryDetail',
+    component: () => import('../views/user/InquiryDetail.vue')
+  },
+  {
+    path: '/market/inquiries',
+    name: 'MarketInquiries',
+    component: () => import('../views/market/MarketInquiries.vue')
+  },
+  {
+    path: '/market/inquiries/:id',
+    name: 'MarketInquiryDetail',
+    component: () => import('../views/market/MarketInquiryDetail.vue')
+  },
+  {
+    path: '/market/inquiries/:id/quote',
+    name: 'QuoteSubmit',
+    component: () => import('../views/market/QuoteSubmit.vue')
+  },
+  {
+    path: '/user/quotes',
+    name: 'MyQuotes',
+    component: () => import('../views/user/MyQuotes.vue')
+  },
+  {
+    path: '/user/quotes/:id',
+    name: 'QuoteDetail',
+    component: () => import('../views/user/QuoteDetail.vue')
   }
 ]
 
